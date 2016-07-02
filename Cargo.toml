@@ -1,7 +1,15 @@
 [package]
 name = "pipe-channel"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Sergey Bugaev <bugaevc@gmail.com>"]
+license = "MIT"
+
+description = "Channel implementation based on pipes"
+keywords = ["pipe", "channel"]
+
+documentation = "https://bugaevc.github.io/pipe-channel/pipe_channel/"
+homepage = "https://github.com/bugaevc/pipe-channel"
+repository = "https://github.com/bugaevc/pipe-channel"
 
 [dependencies]
 nix = "0.6.0"
