@@ -7,12 +7,14 @@ use std::marker::PhantomData;
 extern crate nix;
 
 /// The sending half of a channel
+#[derive(Debug)]
 pub struct Sender<T: Send> {
     fd: RawFd,
     p: PhantomData<*const T>,
 }
 
 /// The receiving half of a channel
+#[derive(Debug)]
 pub struct Receiver<T: Send> {
     fd: RawFd,
     p: PhantomData<*const T>,
