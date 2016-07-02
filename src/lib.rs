@@ -6,14 +6,14 @@ use std::marker::PhantomData;
 
 extern crate nix;
 
-/// The sending half of a channel
+/// The sending half of a channel.
 #[derive(Debug)]
 pub struct Sender<T: Send> {
     fd: RawFd,
     p: PhantomData<*const T>,
 }
 
-/// The receiving half of a channel
+/// The receiving half of a channel.
 #[derive(Debug)]
 pub struct Receiver<T: Send> {
     fd: RawFd,
@@ -24,7 +24,7 @@ unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Send for Receiver<T> {}
 
 
-/// Create a new pipe-based channel
+/// Create a new pipe-based channel.
 ///
 /// # Examples
 ///
@@ -50,11 +50,20 @@ pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
 }
 
 impl<T: Send> Sender<T> {
-    /// Send data to the corresponding Receiver.
+    /// Send data to the corresponding `Receiver`.
+    ///
+    /// This may block if the underlying syscall blocks, namely if the
+    /// pipe buffer is full.
+    ///
+    /// # Errors
+    ///
+    /// If the corresponding `Receiver` is already dropped,
+    /// this method will return `Err(SendError(t))`, transferring the ownership over
+    /// `t` back to the caller.
     ///
     /// # Examples
     ///
-    /// Successful send:
+    /// Success:
     ///
     /// ```
     /// use std::thread;
@@ -70,7 +79,7 @@ impl<T: Send> Sender<T> {
     /// handle.join().unwrap();
     /// ```
     ///
-    /// Unsuccessful send:
+    /// Failure:
     ///
     /// ```
     /// use pipe_channel::*;
@@ -103,7 +112,14 @@ impl<T: Send> Sender<T> {
 }
 
 impl<T: Send> Receiver<T> {
-    /// Receive data sent by the corresponding Sender.
+    /// Receive data sent by the corresponding `Sender`.
+    ///
+    /// This will block until a value is actully sent, if none is already.
+    ///
+    /// # Errors
+    ///
+    /// If the corresponding `Sender` is already dropped (or gets dropped during the wait),
+    /// this method will return `Err(RecvError)`.
     ///
     /// # Examples
     ///
@@ -157,6 +173,27 @@ impl<T: Send> Receiver<T> {
         }
     }
 
+    /// Get an iterator over data sent through the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pipe_channel::*;
+    /// use std::mem::drop;
+    ///
+    /// let (mut tx, mut rx) = channel();
+    /// for i in 0..1024 {
+    ///     tx.send(i).unwrap();
+    /// }
+    /// drop(tx);
+    ///
+    /// for (i, j) in rx.iter().take(10).zip(0..10) {
+    ///     assert_eq!(i, j);
+    /// }
+    /// let v1: Vec<_> = rx.into_iter().collect();
+    /// let v2: Vec<_> = (10..1024).collect();
+    /// assert_eq!(v1, v2);
+    /// ```
     pub fn iter(&mut self) -> Iter<T> {
         self.into_iter()
     }
@@ -181,7 +218,7 @@ impl<T: Send> AsRawFd for Receiver<T> {
     fn as_raw_fd(&self) -> RawFd { self.fd }
 }
 
-/// Iterator over data sent through the channel
+/// Iterator over data sent through the channel.
 /// # Examples
 ///
 /// ```
@@ -193,6 +230,7 @@ impl<T: Send> AsRawFd for Receiver<T> {
 ///     tx.send(i);
 /// }
 /// drop(tx);
+///
 /// let v1: Vec<_> = (0..1024).collect();
 /// let v2: Vec<_> = rx.into_iter().collect();
 /// assert_eq!(v1, v2);
@@ -214,6 +252,9 @@ impl<T: Send> IntoIterator for Receiver<T> {
     }
 }
 
+/// Iterator over data sent through the channel.
+///
+/// See [`Receiver::iter()`](struct.Receiver.html#method.iter) for more information.
 pub struct Iter<'a, T: 'a + Send>(&'a mut Receiver<T>);
 
 impl<'a, T: 'a + Send> Iterator for Iter<'a, T> {
