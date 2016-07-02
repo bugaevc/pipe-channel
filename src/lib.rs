@@ -34,8 +34,10 @@ unsafe impl<T: Send> Send for Receiver<T> {}
 ///
 /// let (mut tx, mut rx) = channel();
 /// let handle = thread::spawn(move || {
+///     tx.send(35).unwrap();
 ///     tx.send(42).unwrap();
 /// });
+/// assert_eq!(rx.recv().unwrap(), 35);
 /// assert_eq!(rx.recv().unwrap(), 42);
 /// handle.join().unwrap();
 /// ```
@@ -60,8 +62,10 @@ impl<T: Send> Sender<T> {
     ///
     /// let (mut tx, mut rx) = channel();
     /// let handle = thread::spawn(move || {
+    ///     tx.send(35).unwrap();
     ///     tx.send(42).unwrap();
     /// });
+    /// assert_eq!(rx.recv().unwrap(), 35);
     /// assert_eq!(rx.recv().unwrap(), 42);
     /// handle.join().unwrap();
     /// ```
@@ -108,8 +112,10 @@ impl<T: Send> Receiver<T> {
     ///
     /// let (mut tx, mut rx) = channel();
     /// let handle = thread::spawn(move || {
+    ///     tx.send(35).unwrap();
     ///     tx.send(42).unwrap();
     /// });
+    /// assert_eq!(rx.recv().unwrap(), 35);
     /// assert_eq!(rx.recv().unwrap(), 42);
     /// handle.join().unwrap();
     /// ```
@@ -190,5 +196,29 @@ mod tests {
         let (mut tx, mut rx) = channel();
         tx.send(()).unwrap();
         assert_eq!(rx.recv().unwrap(), ());
+    }
+
+    #[test]
+    fn large_data() {
+        struct Large([usize; 4096]);
+        impl Large {
+            fn new() -> Large {
+                let mut res = [0; 4096];
+                for i in 0..(res.len()) {
+                    res[i] = i * i;
+                }
+                Large(res)
+            }
+        }
+        unsafe impl Send for Large {};
+
+        let (mut tx, mut rx) = channel();
+        tx.send(Large::new()).unwrap();
+        let res = rx.recv().unwrap();
+
+        let expected = Large::new();
+        for i in 0..(res.0.len()) {
+            assert_eq!(res.0[i], expected.0[i]);
+        }
     }
 }
