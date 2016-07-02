@@ -1,7 +1,7 @@
 pub use std::sync::mpsc::{RecvError, SendError};
 use std::slice;
 use std::mem;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{RawFd, AsRawFd};
 use std::marker::PhantomData;
 
 extern crate nix;
@@ -166,6 +166,13 @@ impl<T: Send> Drop for Receiver<T> {
     fn drop(&mut self) {
         nix::unistd::close(self.fd).unwrap();
     }
+}
+
+impl<T: Send> AsRawFd for Sender<T> {
+    fn as_raw_fd(&self) -> RawFd { self.fd }
+}
+impl<T: Send> AsRawFd for Receiver<T> {
+    fn as_raw_fd(&self) -> RawFd { self.fd }
 }
 
 /// Iterator over data sent through the channel
