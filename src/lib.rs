@@ -73,6 +73,18 @@ impl<T: Send> Receiver<T> {
     }
 }
 
+impl<T: Send> Drop for Sender<T> {
+    fn drop(&mut self) {
+        nix::unistd::close(self.fd).unwrap();
+    }
+}
+
+impl<T: Send> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        nix::unistd::close(self.fd).unwrap();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
