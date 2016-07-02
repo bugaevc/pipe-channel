@@ -150,6 +150,10 @@ impl<T: Send> Receiver<T> {
             Ok(t)
         }
     }
+
+    pub fn iter(&mut self) -> Iter<T> {
+        self.into_iter()
+    }
 }
 
 impl<T: Send> Drop for Sender<T> {
@@ -161,6 +165,56 @@ impl<T: Send> Drop for Sender<T> {
 impl<T: Send> Drop for Receiver<T> {
     fn drop(&mut self) {
         nix::unistd::close(self.fd).unwrap();
+    }
+}
+
+/// Iterator over data sent through the channel
+/// # Examples
+///
+/// ```
+/// use pipe_channel::*;
+/// use std::mem::drop;
+///
+/// let (mut tx, rx) = channel();
+/// for i in 0..1024 {
+///     tx.send(i);
+/// }
+/// drop(tx);
+/// let v1: Vec<_> = (0..1024).collect();
+/// let v2: Vec<_> = rx.into_iter().collect();
+/// assert_eq!(v1, v2);
+/// ```
+pub struct IntoIter<T: Send>(Receiver<T>);
+
+impl<T: Send> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<T> {
+        self.0.recv().ok()
+    }
+}
+
+impl<T: Send> IntoIterator for Receiver<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> IntoIter<T> {
+        IntoIter(self)
+    }
+}
+
+pub struct Iter<'a, T: 'a + Send>(&'a mut Receiver<T>);
+
+impl<'a, T: 'a + Send> Iterator for Iter<'a, T> {
+    type Item = T;
+    fn next(&mut self) -> Option<T> {
+        self.0.recv().ok()
+    }
+}
+
+impl<'a, T: 'a + Send> IntoIterator for &'a mut Receiver<T> {
+    type Item = T;
+    type IntoIter = Iter<'a, T>;
+    fn into_iter(self) -> Iter<'a, T> {
+        Iter(self)
     }
 }
 
@@ -212,6 +266,7 @@ mod tests {
         }
         unsafe impl Send for Large {};
 
+        // may want to use threads, as it may block
         let (mut tx, mut rx) = channel();
         tx.send(Large::new()).unwrap();
         let res = rx.recv().unwrap();
