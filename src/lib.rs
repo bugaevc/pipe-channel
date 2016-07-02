@@ -1,8 +1,104 @@
-use std::sync::mpsc::{RecvError, SendError};
-use std::slice;
+//! Channel implementation based on pipes.
+//!
+//! This crate provides a channel implementation with API similar to that of
+//! [`std::sync::mpsc`](https://doc.rust-lang.org/std/sync/mpsc/index.html),
+//! based on OS-level pipes. The pipes are buffered by the underlying OS kernel.
+//!
+//! Both [`Sender`](struct.Sender.html) and [`Receiver`](struct.Receiver.html) structs
+//! implement [`AsRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.AsRawFd.html) trait,
+//! making them possible to use with `select()` system call,
+//! or in other places where a file descriptor is necessary.
+//!
+//! # Examples
+//!
+//! ```
+//! use std::thread;
+//! use pipe_channel::*;
+//!
+//! let (mut tx, mut rx) = channel();
+//! let handle = thread::spawn(move || {
+//!     tx.send(35).unwrap();
+//!     tx.send(42).unwrap();
+//! });
+//! assert_eq!(rx.recv().unwrap(), 35);
+//! assert_eq!(rx.recv().unwrap(), 42);
+//! handle.join().unwrap();
+//! ```
+//!
+//! # Ownership
+//!
+//! Unlike [`std::sync::mpsc`](https://doc.rust-lang.org/std/sync/mpsc/index.html) channels,
+//! both `Sender::send()` and `Receiver::recv()` take `&mut self`. Thus, it's not possible
+//! to share or clone `Sender`s. Use the usual `Arc<Mutex<Sender<T>>>` instead:
+//!
+//! ```
+//! use std::thread;
+//! use std::sync::{Arc, Mutex};
+//! use pipe_channel::*;
+//!
+//! // Create a shared channel that can be sent along from many threads
+//! // where tx is the sending half (tx for transmission), and rx is the receiving
+//! // half (rx for receiving).
+//! let (tx, mut rx) = channel();
+//! let tx = Arc::new(Mutex::new(tx));
+//! for i in 0..10 {
+//!     let tx = tx.clone();
+//!     thread::spawn(move|| {
+//!         let mut tx = tx.lock().unwrap();
+//!         tx.send(i).unwrap();
+//!     });
+//! }
+//!
+//! for _ in 0..10 {
+//!     let j = rx.recv().unwrap();
+//!     assert!(0 <= j && j < 10);
+//! }
+//! ```
+//!
+//! # Multithreading and multiprocessing
+//!
+//! On a lower level, it is totally supported to have pipes that go from one process to another.
+//! This means that after a `fork()` it's possible to use a channel to send data between processes.
+//! However, please note that the data in question may include some process-local data, like
+//! references, pointers, file descriptors, etc. Thus, it's not really safe to use channels
+//! this way.
+//!
+//! # Relation to SIGPIPE
+//!
+//! When the reading end has been closed, calling `write()` on a pipe sends SIGPIPE to the process.
+//! This means that calling `Sender::send()` when the corresponding `Receiver` has been dropped
+//! will result in SIGPIPE being sent to the process.
+//!
+//! It seems like SIGPIPE is ignored by default in Rust executables. Nevertheless, make sure
+//! that it is in your case.
+//! `Sender::send()` will only return `Err` when the underlying syscall returns `EPIPE`.
+//! See the [manual page](http://linux.die.net/man/7/pipe) for more details.
+//!
+//! # Performance
+//!
+//! Unlike [`std::sync::mpsc`](https://doc.rust-lang.org/std/sync/mpsc/index.html) channels
+//! that were tweaked for ultimate performance, this implementation entirely relies on the kernel.
+//! Simply speaking, what it does is it copies objects bytewise in and out of pipes.
+//! This should be reasonably fast for normal-sized objects. If you need to send a giant object,
+//! consider wrapping it into a `Box` and sending that one instead.
+//!
+//! # Operating systems compatibility
+//!
+//! This should work on any UNIX-like OS. Being lazy, I only tested on
+//! my own system (Fedora), and I'm not planning to change this; however,
+//! if you test this on some other system, I'd appreciate it.
+//!
+//! # Panics
+//!
+//! The `Result`s of syscalls are `unwrap`ped (except for EPIPE). Thus, if any of them fails,
+//! the program will panic. This should be rare, although not completely unexpected
+//! (e.g. program can run out of file descriptors).
+
 use std::mem;
-use std::os::unix::io::{RawFd, AsRawFd};
+use std::slice;
 use std::marker::PhantomData;
+use std::sync::mpsc::{RecvError, SendError};
+use std::os::unix::io::{RawFd, AsRawFd};
 
 extern crate nix;
 
