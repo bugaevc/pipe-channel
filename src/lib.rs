@@ -94,6 +94,34 @@ impl<T: Send> Sender<T> {
 }
 
 impl<T: Send> Receiver<T> {
+    /// Receive data sent by the corresponding Sender.
+    ///
+    /// # Examples
+    ///
+    /// Success:
+    ///
+    /// ```
+    /// use std::thread;
+    /// use pipe_channel::*;
+    ///
+    /// let (mut tx, mut rx) = channel();
+    /// let handle = thread::spawn(move || {
+    ///     tx.send(42).unwrap();
+    /// });
+    /// assert_eq!(rx.recv().unwrap(), 42);
+    /// handle.join().unwrap();
+    /// ```
+    ///
+    /// Failure:
+    ///
+    /// ```
+    /// use pipe_channel::*;
+    /// use std::mem::drop;
+    ///
+    /// let (tx, mut rx) = channel::<i32>();
+    /// drop(tx);
+    /// assert_eq!(rx.recv(), Err(RecvError));
+    /// ```
     pub fn recv(&mut self) -> Result<T, RecvError> {
         unsafe {
             let t = mem::uninitialized();
