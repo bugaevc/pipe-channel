@@ -6,13 +6,13 @@ use std::marker::PhantomData;
 
 extern crate nix;
 
-/// The Sender part of a channel
+/// The sending half of a channel
 pub struct Sender<T: Send> {
     fd: RawFd,
     p: PhantomData<*const T>,
 }
 
-/// The Receiver part of a channel
+/// The receiving half of a channel
 pub struct Receiver<T: Send> {
     fd: RawFd,
     p: PhantomData<*const T>,
@@ -22,6 +22,21 @@ unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Send for Receiver<T> {}
 
 
+/// Create a new pipe-based channel
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use pipe_channel::*;
+///
+/// let (mut tx, mut rx) = channel();
+/// let handle = thread::spawn(move || {
+///     tx.send(42).unwrap();
+/// });
+/// assert_eq!(rx.recv().unwrap(), 42);
+/// handle.join().unwrap();
+/// ```
 pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
     let fd = nix::unistd::pipe().unwrap();
     (
@@ -31,6 +46,34 @@ pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
 }
 
 impl<T: Send> Sender<T> {
+    /// Send data to the corresponding Receiver.
+    ///
+    /// # Examples
+    ///
+    /// Successful send:
+    ///
+    /// ```
+    /// use std::thread;
+    /// use pipe_channel::*;
+    ///
+    /// let (mut tx, mut rx) = channel();
+    /// let handle = thread::spawn(move || {
+    ///     tx.send(42).unwrap();
+    /// });
+    /// assert_eq!(rx.recv().unwrap(), 42);
+    /// handle.join().unwrap();
+    /// ```
+    ///
+    /// Unsuccessful send:
+    ///
+    /// ```
+    /// use pipe_channel::*;
+    /// use std::mem::drop;
+    ///
+    /// let (mut tx, rx) = channel();
+    /// drop(rx);
+    /// assert_eq!(tx.send(42), Err(SendError(42)));
+    /// ```
     pub fn send(&mut self, t: T) -> Result<(), SendError<T>> {
         let s: &[u8] = unsafe {
             slice::from_raw_parts(mem::transmute(&t), mem::size_of::<T>())
@@ -87,7 +130,35 @@ impl<T: Send> Drop for Receiver<T> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn it_works() {
+    fn no_leak() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        struct T(Arc<Mutex<i32>>);
+        impl Drop for T {
+            fn drop(&mut self) {
+                *self.0.lock().unwrap() += 1;
+            }
+        }
+
+        let cnt = Arc::new(Mutex::new(0));
+        let t = T(cnt.clone());
+        let (mut tx, mut rx) = channel();
+
+        assert_eq!(*cnt.lock().unwrap(), 0);
+        tx.send(t).unwrap();
+        assert_eq!(*cnt.lock().unwrap(), 0);
+        thread::spawn(move || rx.recv().unwrap()).join().unwrap();
+        assert_eq!(*cnt.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn zero_sized_type() {
+        let (mut tx, mut rx) = channel();
+        tx.send(()).unwrap();
+        assert_eq!(rx.recv().unwrap(), ());
     }
 }
