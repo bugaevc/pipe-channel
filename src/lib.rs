@@ -82,6 +82,8 @@ impl<T: Send> Sender<T> {
     /// assert_eq!(tx.send(42), Err(SendError(42)));
     /// ```
     pub fn send(&mut self, t: T) -> Result<(), SendError<T>> {
+        // TODO: once constexpr is stable, change this to
+        // let mut s: [u8; mem::size_of::<T>()] = mem::transmute(t);
         let s: &[u8] = unsafe {
             slice::from_raw_parts(mem::transmute(&t), mem::size_of::<T>())
         };
@@ -134,6 +136,8 @@ impl<T: Send> Receiver<T> {
     /// ```
     pub fn recv(&mut self) -> Result<T, RecvError> {
         unsafe {
+            // TODO: once constexpr is stable, change this to
+            // let mut s: [u8; mem::size_of::<T>()] = mem::uninitialized();
             let t = mem::uninitialized();
             let s: &mut [u8] = slice::from_raw_parts_mut(mem::transmute(&t), mem::size_of::<T>());
 
