@@ -1,4 +1,4 @@
-pub use std::sync::mpsc::{RecvError, SendError};
+use std::sync::mpsc::{RecvError, SendError};
 use std::slice;
 use std::mem;
 use std::os::unix::io::{RawFd, AsRawFd};
@@ -74,6 +74,7 @@ impl<T: Send> Sender<T> {
     ///
     /// ```
     /// use pipe_channel::*;
+    /// use std::sync::mpsc::SendError;
     /// use std::mem::drop;
     ///
     /// let (mut tx, rx) = channel();
@@ -124,6 +125,7 @@ impl<T: Send> Receiver<T> {
     ///
     /// ```
     /// use pipe_channel::*;
+    /// use std::sync::mpsc::RecvError;
     /// use std::mem::drop;
     ///
     /// let (tx, mut rx) = channel::<i32>();
