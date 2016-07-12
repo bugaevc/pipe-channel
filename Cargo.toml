@@ -8,7 +8,6 @@ description = "Channel implementation based on pipes"
 keywords = ["pipe", "channel"]
 
 documentation = "https://bugaevc.github.io/pipe-channel/pipe_channel/"
-homepage = "https://github.com/bugaevc/pipe-channel"
 repository = "https://github.com/bugaevc/pipe-channel"
 
 [dependencies]
