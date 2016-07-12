@@ -102,6 +102,7 @@ use std::sync::mpsc::{RecvError, SendError};
 use std::os::unix::io::{RawFd, AsRawFd};
 
 extern crate nix;
+extern crate libc;
 
 /// The sending half of a channel.
 #[derive(Debug)]
@@ -139,7 +140,8 @@ unsafe impl<T: Send> Send for Receiver<T> {}
 /// handle.join().unwrap();
 /// ```
 pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
-    let fd = nix::unistd::pipe().unwrap();
+    let flags = nix::fcntl::OFlag::from_bits(libc::O_CLOEXEC).unwrap();
+    let fd = nix::unistd::pipe2(flags).unwrap();
     (
         Sender { fd: fd.1, p: PhantomData },
         Receiver { fd: fd.0, p: PhantomData },
