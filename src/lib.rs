@@ -96,6 +96,7 @@
 
 use std::mem;
 use std::slice;
+use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::sync::mpsc::{RecvError, SendError};
 use std::os::unix::io::{RawFd, AsRawFd};
@@ -250,8 +251,8 @@ impl<T: Send> Receiver<T> {
         unsafe {
             // TODO: once constexpr is stable, change this to
             // let mut s: [u8; mem::size_of::<T>()] = mem::uninitialized();
-            let t = mem::uninitialized();
-            let s: &mut [u8] = slice::from_raw_parts_mut(mem::transmute(&t), mem::size_of::<T>());
+            let t = UnsafeCell::new(mem::uninitialized());
+            let s: &mut [u8] = slice::from_raw_parts_mut(t.get() as *mut u8, mem::size_of::<T>());
 
             let mut n = 0;
             while n < s.len() {
@@ -265,7 +266,7 @@ impl<T: Send> Receiver<T> {
                 }
             }
 
-            Ok(t)
+            Ok(t.into_inner())
         }
     }
 
