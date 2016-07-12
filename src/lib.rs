@@ -95,6 +95,7 @@
 //! (e.g. program can run out of file descriptors).
 
 use std::mem;
+use std::fmt;
 use std::slice;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -104,22 +105,33 @@ use std::os::unix::io::{RawFd, AsRawFd};
 extern crate nix;
 extern crate libc;
 
-/// The sending half of a channel.
-#[derive(Debug)]
-pub struct Sender<T: Send> {
+struct Inner<T> {
     fd: RawFd,
     p: PhantomData<*const T>,
 }
+
+impl<T> Inner<T> {
+    fn new(fd: RawFd) -> Self {
+        Inner {
+            fd: fd,
+            p: PhantomData,
+        }
+    }
+}
+
+unsafe impl<T: Send> Send for Inner<T> {}
+
+impl<T> Drop for Inner<T> {
+    fn drop(&mut self) {
+        nix::unistd::close(self.fd).unwrap();
+    }
+}
+
+/// The sending half of a channel.
+pub struct Sender<T: Send>(Inner<T>);
 
 /// The receiving half of a channel.
-#[derive(Debug)]
-pub struct Receiver<T: Send> {
-    fd: RawFd,
-    p: PhantomData<*const T>,
-}
-
-unsafe impl<T: Send> Send for Sender<T> {}
-unsafe impl<T: Send> Send for Receiver<T> {}
+pub struct Receiver<T: Send>(Inner<T>);
 
 
 /// Create a new pipe-based channel.
@@ -143,8 +155,8 @@ pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
     let flags = nix::fcntl::OFlag::from_bits(libc::O_CLOEXEC).unwrap();
     let fd = nix::unistd::pipe2(flags).unwrap();
     (
-        Sender { fd: fd.1, p: PhantomData },
-        Receiver { fd: fd.0, p: PhantomData },
+        Sender(Inner::new(fd.1)),
+        Receiver(Inner::new(fd.0)),
     )
 }
 
@@ -198,7 +210,7 @@ impl<T: Send> Sender<T> {
 
         let mut n = 0;
         while n < s.len() {
-            match nix::unistd::write(self.fd, &s[n..]) {
+            match nix::unistd::write(self.0.fd, &s[n..]) {
                 Ok(count) => n += count,
                 Err(nix::Error::Sys(nix::Errno::EPIPE)) => return Err(SendError(t)),
                 e => { e.unwrap(); }
@@ -258,7 +270,7 @@ impl<T: Send> Receiver<T> {
 
             let mut n = 0;
             while n < s.len() {
-                match nix::unistd::read(self.fd, &mut s[n..]) {
+                match nix::unistd::read(self.0.fd, &mut s[n..]) {
                     Ok(0) => {
                         mem::forget(t);
                         return Err(RecvError);
@@ -298,23 +310,27 @@ impl<T: Send> Receiver<T> {
     }
 }
 
-impl<T: Send> Drop for Sender<T> {
-    fn drop(&mut self) {
-        nix::unistd::close(self.fd).unwrap();
-    }
-}
-
-impl<T: Send> Drop for Receiver<T> {
-    fn drop(&mut self) {
-        nix::unistd::close(self.fd).unwrap();
-    }
-}
-
 impl<T: Send> AsRawFd for Sender<T> {
-    fn as_raw_fd(&self) -> RawFd { self.fd }
+    fn as_raw_fd(&self) -> RawFd { self.0.fd }
 }
 impl<T: Send> AsRawFd for Receiver<T> {
-    fn as_raw_fd(&self) -> RawFd { self.fd }
+    fn as_raw_fd(&self) -> RawFd { self.0.fd }
+}
+
+impl<T: Send> fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender")
+            .field("fd", &self.0.fd)
+            .finish()
+    }
+}
+
+impl<T: Send> fmt::Debug for Receiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver")
+            .field("fd", &self.0.fd)
+            .finish()
+    }
 }
 
 /// Iterator over data sent through the channel.
@@ -403,6 +419,16 @@ mod tests {
         let (mut tx, mut rx) = channel();
         tx.send(()).unwrap();
         assert_eq!(rx.recv().unwrap(), ());
+    }
+
+    #[test]
+    fn debug_print() {
+        use std::os::unix::io::AsRawFd;
+
+        let (tx, _) = channel::<i32>();
+        let s1 = format!("Sender {{ fd: {:?} }}", tx.as_raw_fd());
+        let s2 = format!("{:?}", tx);
+        assert_eq!(s1, s2);
     }
 
     #[test]
