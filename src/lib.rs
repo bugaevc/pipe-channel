@@ -128,10 +128,10 @@ impl<T> Drop for Inner<T> {
 }
 
 /// The sending half of a channel.
-pub struct Sender<T: Send>(Inner<T>);
+pub struct Sender<T>(Inner<T>);
 
 /// The receiving half of a channel.
-pub struct Receiver<T: Send>(Inner<T>);
+pub struct Receiver<T>(Inner<T>);
 
 
 /// Create a new pipe-based channel.
@@ -151,7 +151,7 @@ pub struct Receiver<T: Send>(Inner<T>);
 /// assert_eq!(rx.recv().unwrap(), 42);
 /// handle.join().unwrap();
 /// ```
-pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let flags = nix::fcntl::OFlag::from_bits(libc::O_CLOEXEC).unwrap();
     let fd = nix::unistd::pipe2(flags).unwrap();
     (
@@ -160,7 +160,7 @@ pub fn channel<T: Send>() -> (Sender<T>, Receiver<T>) {
     )
 }
 
-impl<T: Send> Sender<T> {
+impl<T> Sender<T> {
     /// Send data to the corresponding `Receiver`.
     ///
     /// This may block if the underlying syscall blocks, namely if the
@@ -222,7 +222,7 @@ impl<T: Send> Sender<T> {
     }
 }
 
-impl<T: Send> Receiver<T> {
+impl<T> Receiver<T> {
     /// Receive data sent by the corresponding `Sender`.
     ///
     /// This will block until a value is actully sent, if none is already.
@@ -310,14 +310,14 @@ impl<T: Send> Receiver<T> {
     }
 }
 
-impl<T: Send> AsRawFd for Sender<T> {
+impl<T> AsRawFd for Sender<T> {
     fn as_raw_fd(&self) -> RawFd { self.0.fd }
 }
-impl<T: Send> AsRawFd for Receiver<T> {
+impl<T> AsRawFd for Receiver<T> {
     fn as_raw_fd(&self) -> RawFd { self.0.fd }
 }
 
-impl<T: Send> fmt::Debug for Sender<T> {
+impl<T> fmt::Debug for Sender<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
             .field("fd", &self.0.fd)
@@ -325,7 +325,7 @@ impl<T: Send> fmt::Debug for Sender<T> {
     }
 }
 
-impl<T: Send> fmt::Debug for Receiver<T> {
+impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver")
             .field("fd", &self.0.fd)
@@ -350,16 +350,16 @@ impl<T: Send> fmt::Debug for Receiver<T> {
 /// let v2: Vec<_> = rx.into_iter().collect();
 /// assert_eq!(v1, v2);
 /// ```
-pub struct IntoIter<T: Send>(Receiver<T>);
+pub struct IntoIter<T>(Receiver<T>);
 
-impl<T: Send> Iterator for IntoIter<T> {
+impl<T> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<T> {
         self.0.recv().ok()
     }
 }
 
-impl<T: Send> IntoIterator for Receiver<T> {
+impl<T> IntoIterator for Receiver<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
     fn into_iter(self) -> IntoIter<T> {
@@ -370,16 +370,16 @@ impl<T: Send> IntoIterator for Receiver<T> {
 /// Iterator over data sent through the channel.
 ///
 /// See [`Receiver::iter()`](struct.Receiver.html#method.iter) for more information.
-pub struct Iter<'a, T: 'a + Send>(&'a mut Receiver<T>);
+pub struct Iter<'a, T: 'a>(&'a mut Receiver<T>);
 
-impl<'a, T: 'a + Send> Iterator for Iter<'a, T> {
+impl<'a, T: 'a> Iterator for Iter<'a, T> {
     type Item = T;
     fn next(&mut self) -> Option<T> {
         self.0.recv().ok()
     }
 }
 
-impl<'a, T: 'a + Send> IntoIterator for &'a mut Receiver<T> {
+impl<'a, T: 'a> IntoIterator for &'a mut Receiver<T> {
     type Item = T;
     type IntoIter = Iter<'a, T>;
     fn into_iter(self) -> Iter<'a, T> {
