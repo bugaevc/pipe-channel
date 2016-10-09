@@ -205,7 +205,7 @@ impl<T> Sender<T> {
         // TODO: once constexpr is stable, change this to
         // let mut s: [u8; mem::size_of::<T>()] = mem::transmute(t);
         let s: &[u8] = unsafe {
-            slice::from_raw_parts(mem::transmute(&t), mem::size_of::<T>())
+            slice::from_raw_parts(&t as *const T as *const u8, mem::size_of::<T>())
         };
 
         let mut n = 0;
