@@ -455,4 +455,17 @@ mod tests {
             assert_eq!(res.0[i], expected.0[i]);
         }
     }
+
+    #[test]
+    fn no_send_no_threading() {
+        use std::rc::Rc;
+
+        // Rc<i32>: !Send
+        let rc = Rc::new(1024);
+        let (mut tx, mut rx) = channel();
+
+        tx.send(rc).unwrap();
+        let res = rx.recv().unwrap();
+        assert_eq!(*res, 1024);
+    }
 }
