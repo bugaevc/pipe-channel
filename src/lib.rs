@@ -202,11 +202,14 @@ impl<T> Sender<T> {
     /// assert_eq!(tx.send(42), Err(SendError(42)));
     /// ```
     pub fn send(&mut self, t: T) -> Result<(), SendError<T>> {
-        // TODO: once constexpr is stable, change this to
-        // let mut s: [u8; mem::size_of::<T>()] = mem::transmute(t);
-        let s: &[u8] = unsafe {
-            slice::from_raw_parts(&t as *const T as *const u8, mem::size_of::<T>())
-        };
+        let mut s: &[u8] = &[0];
+        if mem::size_of::<T>() > 0 {
+            // TODO: once constexpr is stable, change this to
+            // let mut s: [u8; mem::size_of::<T>()] = mem::transmute(t);
+            s = unsafe {
+                slice::from_raw_parts(&t as *const T as *const u8, mem::size_of::<T>())
+            };
+        }
 
         let mut n = 0;
         while n < s.len() {
@@ -266,7 +269,10 @@ impl<T> Receiver<T> {
             // TODO: once constexpr is stable, change this to
             // let mut s: [u8; mem::size_of::<T>()] = mem::uninitialized();
             let t = UnsafeCell::new(mem::uninitialized());
-            let s: &mut [u8] = slice::from_raw_parts_mut(t.get() as *mut u8, mem::size_of::<T>());
+            let mut s: &mut [u8] = &mut [0];
+            if mem::size_of::<T>() > 0 {
+                s = slice::from_raw_parts_mut(t.get() as *mut u8, mem::size_of::<T>())
+            };
 
             let mut n = 0;
             while n < s.len() {
@@ -390,6 +396,7 @@ impl<'a, T: 'a> IntoIterator for &'a mut Receiver<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::RecvError;
 
     #[test]
     fn no_leak() {
@@ -419,6 +426,13 @@ mod tests {
         let (mut tx, mut rx) = channel();
         tx.send(()).unwrap();
         assert_eq!(rx.recv().unwrap(), ());
+    }
+
+    #[test]
+    fn zero_sized_type_drop() {
+        let (tx, mut rx) = channel::<()>();
+        drop(tx);
+        assert_eq!(rx.recv(), Err(RecvError));
     }
 
     #[test]
