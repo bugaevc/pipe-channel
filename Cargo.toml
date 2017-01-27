@@ -7,7 +7,7 @@ license = "MIT"
 description = "Channel implementation based on pipes"
 keywords = ["pipe", "channel"]
 
-documentation = "https://bugaevc.github.io/pipe-channel/pipe_channel/"
+documentation = "https://docs.rs/pipe-channel/"
 repository = "https://github.com/bugaevc/pipe-channel"
 
 [dependencies]
