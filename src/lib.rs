@@ -5,9 +5,11 @@
 //! based on OS-level pipes. The pipes are buffered by the underlying OS kernel.
 //!
 //! Both [`Sender`](struct.Sender.html) and [`Receiver`](struct.Receiver.html) structs
-//! implement [`AsRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.AsRawFd.html) trait,
-//! making them possible to use with `select()` system call,
-//! or in other places where a file descriptor is necessary.
+//! implement [`AsRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.AsRawFd.html),
+//! [`FromRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.FromRawFd.html) and
+//! [`IntoRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.IntoRawFd.html) traits,
+//! making them possible to use with `select()` system call, or in other places where
+//! a file descriptor is necessary.
 //!
 //! # Examples
 //!
@@ -100,7 +102,7 @@ use std::slice;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::sync::mpsc::{RecvError, SendError};
-use std::os::unix::io::{RawFd, AsRawFd};
+use std::os::unix::io::{RawFd, AsRawFd, IntoRawFd, FromRawFd};
 
 extern crate nix;
 extern crate libc;
@@ -316,13 +318,46 @@ impl<T> Receiver<T> {
     }
 }
 
+// AsRawFd
 impl<T> AsRawFd for Sender<T> {
     fn as_raw_fd(&self) -> RawFd { self.0.fd }
 }
+
 impl<T> AsRawFd for Receiver<T> {
     fn as_raw_fd(&self) -> RawFd { self.0.fd }
 }
 
+// IntoRawFd
+impl<T> IntoRawFd for Sender<T> {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.0.fd;
+        mem::forget(self);
+        fd
+    }
+}
+
+impl<T> IntoRawFd for Receiver<T> {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.0.fd;
+        mem::forget(self);
+        fd
+    }
+}
+
+// FromRawFd
+impl<T> FromRawFd for Sender<T> {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Sender(Inner::new(fd))
+    }
+}
+
+impl<T> FromRawFd for Receiver<T> {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Receiver(Inner::new(fd))
+    }
+}
+
+// Debug
 impl<T> fmt::Debug for Sender<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
@@ -481,5 +516,17 @@ mod tests {
         tx.send(rc).unwrap();
         let res = rx.recv().unwrap();
         assert_eq!(*res, 1024);
+    }
+
+    #[test]
+    fn raw_fd() {
+        use std::os::unix::io::{AsRawFd, IntoRawFd, FromRawFd};
+
+        let (mut tx, rx) = channel();
+        let fd = rx.into_raw_fd();
+        let mut rx = unsafe { Receiver::<i32>::from_raw_fd(fd) };
+        assert_eq!(rx.as_raw_fd(), fd);
+        tx.send(42).unwrap();
+        assert_eq!(rx.recv().unwrap(), 42);
     }
 }
