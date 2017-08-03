@@ -115,7 +115,7 @@ struct Inner<T> {
 impl<T> Inner<T> {
     fn new(fd: RawFd) -> Self {
         Inner {
-            fd: fd,
+            fd,
             p: PhantomData,
         }
     }
@@ -230,7 +230,7 @@ impl<T> Sender<T> {
 impl<T> Receiver<T> {
     /// Receive data sent by the corresponding `Sender`.
     ///
-    /// This will block until a value is actully sent, if none is already.
+    /// This will block until a value is actually sent, if none is already.
     ///
     /// # Errors
     ///
@@ -274,7 +274,7 @@ impl<T> Receiver<T> {
             let mut s: &mut [u8] = &mut [0];
             if mem::size_of::<T>() > 0 {
                 s = slice::from_raw_parts_mut(t.get() as *mut u8, mem::size_of::<T>())
-            };
+            }
 
             let mut n = 0;
             while n < s.len() {
