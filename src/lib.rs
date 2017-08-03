@@ -9,7 +9,8 @@
 //! [`FromRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.FromRawFd.html) and
 //! [`IntoRawFd`](https://doc.rust-lang.org/std/os/unix/io/trait.IntoRawFd.html) traits,
 //! making them possible to use with `select()` system call, or in other places where
-//! a file descriptor is necessary.
+//! a file descriptor is necessary. This allows for the channels to be easily integrated
+//! into all kinds of event loops.
 //!
 //! # Examples
 //!
@@ -86,9 +87,7 @@
 //!
 //! # Operating systems compatibility
 //!
-//! This should work on any UNIX-like OS. Being lazy, I only tested on
-//! my own system (Fedora), and I'm not planning to change this; however,
-//! if you test this on some other system, I'd appreciate it.
+//! This should work on any UNIX-like OS.
 //!
 //! # Panics
 //!
