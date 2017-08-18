@@ -106,33 +106,39 @@ use std::os::unix::io::{RawFd, AsRawFd, IntoRawFd, FromRawFd};
 extern crate nix;
 extern crate libc;
 
-struct Inner<T> {
+
+/// The sending half of a channel.
+pub struct Sender<T> {
     fd: RawFd,
-    p: PhantomData<*const T>,
+    // models the send() method
+    variance: PhantomData<fn(T)>,
+    // opt out of Send
+    not_send: PhantomData<*const ()>,
 }
 
-impl<T> Inner<T> {
-    fn new(fd: RawFd) -> Self {
-        Inner {
-            fd,
-            p: PhantomData,
-        }
-    }
+/// The receiving half of a channel.
+pub struct Receiver<T>{
+    fd: RawFd,
+    // models the recv() method
+    variance: PhantomData<fn() -> T>,
+    // opt out of Send
+    not_send: PhantomData<*const ()>,
 }
 
-unsafe impl<T: Send> Send for Inner<T> {}
-
-impl<T> Drop for Inner<T> {
+impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         nix::unistd::close(self.fd).unwrap();
     }
 }
 
-/// The sending half of a channel.
-pub struct Sender<T>(Inner<T>);
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        nix::unistd::close(self.fd).unwrap();
+    }
+}
 
-/// The receiving half of a channel.
-pub struct Receiver<T>(Inner<T>);
+unsafe impl<T: Send> Send for Sender<T> {}
+unsafe impl<T: Send> Send for Receiver<T> {}
 
 
 /// Create a new pipe-based channel.
@@ -156,12 +162,16 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let flags = nix::fcntl::OFlag::from_bits(libc::O_CLOEXEC).unwrap();
     let fd = nix::unistd::pipe2(flags).unwrap();
     (
-        Sender(Inner::new(fd.1)),
-        Receiver(Inner::new(fd.0)),
+        Sender::new(fd.1),
+        Receiver::new(fd.0),
     )
 }
 
 impl<T> Sender<T> {
+    fn new(fd: RawFd) -> Self {
+        Sender { fd, variance: PhantomData, not_send: PhantomData }
+    }
+
     /// Send data to the corresponding `Receiver`.
     ///
     /// This may block if the underlying syscall blocks, namely if the
@@ -214,7 +224,7 @@ impl<T> Sender<T> {
 
         let mut n = 0;
         while n < s.len() {
-            match nix::unistd::write(self.0.fd, &s[n..]) {
+            match nix::unistd::write(self.fd, &s[n..]) {
                 Ok(count) => n += count,
                 Err(nix::Error::Sys(nix::Errno::EPIPE)) => return Err(SendError(t)),
                 e => { e.unwrap(); }
@@ -227,6 +237,10 @@ impl<T> Sender<T> {
 }
 
 impl<T> Receiver<T> {
+    fn new(fd: RawFd) -> Self {
+        Receiver { fd, variance: PhantomData, not_send: PhantomData }
+    }
+
     /// Receive data sent by the corresponding `Sender`.
     ///
     /// This will block until a value is actually sent, if none is already.
@@ -277,7 +291,7 @@ impl<T> Receiver<T> {
 
             let mut n = 0;
             while n < s.len() {
-                match nix::unistd::read(self.0.fd, &mut s[n..]) {
+                match nix::unistd::read(self.fd, &mut s[n..]) {
                     Ok(0) => {
                         mem::forget(t);
                         return Err(RecvError);
@@ -319,17 +333,17 @@ impl<T> Receiver<T> {
 
 // AsRawFd
 impl<T> AsRawFd for Sender<T> {
-    fn as_raw_fd(&self) -> RawFd { self.0.fd }
+    fn as_raw_fd(&self) -> RawFd { self.fd }
 }
 
 impl<T> AsRawFd for Receiver<T> {
-    fn as_raw_fd(&self) -> RawFd { self.0.fd }
+    fn as_raw_fd(&self) -> RawFd { self.fd }
 }
 
 // IntoRawFd
 impl<T> IntoRawFd for Sender<T> {
     fn into_raw_fd(self) -> RawFd {
-        let fd = self.0.fd;
+        let fd = self.fd;
         mem::forget(self);
         fd
     }
@@ -337,7 +351,7 @@ impl<T> IntoRawFd for Sender<T> {
 
 impl<T> IntoRawFd for Receiver<T> {
     fn into_raw_fd(self) -> RawFd {
-        let fd = self.0.fd;
+        let fd = self.fd;
         mem::forget(self);
         fd
     }
@@ -346,13 +360,13 @@ impl<T> IntoRawFd for Receiver<T> {
 // FromRawFd
 impl<T> FromRawFd for Sender<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Sender(Inner::new(fd))
+        Sender::new(fd)
     }
 }
 
 impl<T> FromRawFd for Receiver<T> {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Receiver(Inner::new(fd))
+        Receiver::new(fd)
     }
 }
 
@@ -360,7 +374,7 @@ impl<T> FromRawFd for Receiver<T> {
 impl<T> fmt::Debug for Sender<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
-            .field("fd", &self.0.fd)
+            .field("fd", &self.fd)
             .finish()
     }
 }
@@ -368,7 +382,7 @@ impl<T> fmt::Debug for Sender<T> {
 impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver")
-            .field("fd", &self.0.fd)
+            .field("fd", &self.fd)
             .finish()
     }
 }
