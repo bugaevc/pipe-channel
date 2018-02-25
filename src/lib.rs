@@ -226,7 +226,7 @@ impl<T> Sender<T> {
         while n < s.len() {
             match nix::unistd::write(self.fd, &s[n..]) {
                 Ok(count) => n += count,
-                Err(nix::Error::Sys(nix::Errno::EPIPE)) => return Err(SendError(t)),
+                Err(nix::Error::Sys(nix::errno::Errno::EPIPE)) => return Err(SendError(t)),
                 e => { e.unwrap(); }
             }
         }
