@@ -12,5 +12,5 @@ documentation = "https://docs.rs/pipe-channel/"
 repository = "https://github.com/bugaevc/pipe-channel"
 
 [dependencies]
-nix = "0.10.0"
-libc = "0.2.29"
+nix = "0.17.0"
+libc = "0.2.66"
