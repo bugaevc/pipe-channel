@@ -462,6 +462,28 @@ mod tests {
     }
 
     #[test]
+    fn no_drop_on_recv_err() {
+        #[derive(Debug)]
+        struct T<'a>(&'a mut i32);
+        impl Drop for T<'_> {
+            fn drop(&mut self) {
+                *self.0 += 1;
+            }
+        }
+
+        let mut cnt = 0;
+        {
+            let t = T(&mut cnt);
+            let (mut tx, mut rx) = channel();
+            tx.send(t).unwrap();
+            rx.recv().unwrap();
+            drop(tx);
+            rx.recv().unwrap_err();
+        }
+        assert_eq!(cnt, 1);
+    }
+
+    #[test]
     fn zero_sized_type() {
         let (mut tx, mut rx) = channel();
         tx.send(()).unwrap();
