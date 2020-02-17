@@ -95,10 +95,9 @@
 //! the program will panic. This should be rare, although not completely unexpected
 //! (e.g. program can run out of file descriptors).
 
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::fmt;
 use std::slice;
-use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::sync::mpsc::{RecvError, SendError};
 use std::os::unix::io::{RawFd, AsRawFd, IntoRawFd, FromRawFd};
@@ -279,25 +278,22 @@ impl<T> Receiver<T> {
         unsafe {
             // TODO: once constexpr is stable, change this to
             // let mut s: [u8; mem::size_of::<T>()] = mem::uninitialized();
-            let t = UnsafeCell::new(mem::uninitialized());
+            let mut t = MaybeUninit::<T>::uninit();
             let mut s: &mut [u8] = &mut [0];
             if mem::size_of::<T>() > 0 {
-                s = slice::from_raw_parts_mut(t.get() as *mut u8, mem::size_of::<T>())
+                s = slice::from_raw_parts_mut(t.as_mut_ptr() as *mut u8, mem::size_of::<T>())
             }
 
             let mut n = 0;
             while n < s.len() {
                 match nix::unistd::read(self.fd, &mut s[n..]) {
-                    Ok(0) => {
-                        mem::forget(t);
-                        return Err(RecvError);
-                    }
+                    Ok(0) => return Err(RecvError),
                     Ok(count) => n += count,
                     e => { e.unwrap(); }
                 }
             }
 
-            Ok(t.into_inner())
+            Ok(t.assume_init())
         }
     }
 
