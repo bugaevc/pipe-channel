@@ -103,10 +103,6 @@ use std::marker::PhantomData;
 use std::sync::mpsc::{RecvError, SendError};
 use std::os::unix::io::{RawFd, AsRawFd, IntoRawFd, FromRawFd};
 
-extern crate nix;
-extern crate libc;
-
-
 /// The sending half of a channel.
 pub struct Sender<T> {
     fd: RawFd,
