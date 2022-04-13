@@ -509,17 +509,24 @@ mod tests {
 
     #[test]
     fn large_data() {
-        struct Large([usize; 4096]);
+        // on at least illumos systems, the larger write blocks waiting for a
+        // reader:
+        #[cfg(target_os = "illumos")]
+        const LARGE_SIZE: usize = 2048;
+        #[cfg(not(target_os = "illumos"))]
+        const LARGE_SIZE: usize = 4096;
+
+        struct Large([usize; LARGE_SIZE]);
         impl Large {
             fn new() -> Large {
-                let mut res = [0; 4096];
+                let mut res = [0; LARGE_SIZE];
                 for i in 0..(res.len()) {
                     res[i] = i * i;
                 }
                 Large(res)
             }
         }
-        unsafe impl Send for Large {};
+        unsafe impl Send for Large {}
 
         // may want to use threads, as it may block
         let (mut tx, mut rx) = channel();
